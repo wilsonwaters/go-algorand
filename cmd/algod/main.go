@@ -72,6 +72,8 @@ func main() {
 }
 
 func run() int {
+	fmt.Fprintln(os.Stderr, "Willy exit")
+	return 1
 	dataDir := resolveDataDir()
 	absolutePath, absPathErr := filepath.Abs(dataDir)
 	config.DataDirectory = absolutePath
