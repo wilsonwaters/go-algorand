@@ -25,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -815,19 +816,37 @@ func (client RestClient) RemoveParticipationKeyByID(participationID string) (err
 
 // SetSyncRound sets the sync round for the catchup service
 func (client RestClient) SetSyncRound(round basics.Round) (err error) {
+	fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] SetSyncRound called with round: %d\n", round)
 	err = client.post(nil, fmt.Sprintf("/v2/ledger/sync/%d", round), nil, nil, true)
+	if err != nil {
+		fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] SetSyncRound failed for round %d: %v\n", round, err)
+	} else {
+		fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] SetSyncRound succeeded for round: %d\n", round)
+	}
 	return
 }
 
 // UnsetSyncRound deletes the sync round constraint
 func (client RestClient) UnsetSyncRound() (err error) {
+	fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] UnsetSyncRound called\n")
 	err = client.delete(nil, "/v2/ledger/sync", nil, true)
+	if err != nil {
+		fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] UnsetSyncRound failed: %v\n", err)
+	} else {
+		fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] UnsetSyncRound succeeded\n")
+	}
 	return
 }
 
 // GetSyncRound retrieves the sync round (if set)
 func (client RestClient) GetSyncRound() (response model.GetSyncRoundResponse, err error) {
+	fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] GetSyncRound called\n")
 	err = client.get(&response, "/v2/ledger/sync", nil)
+	if err != nil {
+		fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] GetSyncRound failed: %v\n", err)
+	} else {
+		fmt.Fprintln(os.Stdout, "[DEBUG] [restClient.go] GetSyncRound succeeded, sync round: %d\n", response.Round)
+	}
 	return
 }
 

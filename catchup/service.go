@@ -616,74 +616,149 @@ func (s *Service) unsupportedRoundMonitor() {
 // periodicSync periodically asks the network for its latest round and syncs if we've fallen behind (also if our ledger stops advancing)
 func (s *Service) periodicSync() {
 	defer s.workers.Done()
+	s.log.Debugf("periodicSync: Starting periodic sync loop with parallelBlocks=%d, DisableNetworking=%t, roundTimeEstimate=%v",
+		s.parallelBlocks, s.cfg.DisableNetworking, s.roundTimeEstimate)
+
 	// if the catchup is disabled in the config file, just skip it.
 	if s.parallelBlocks != 0 && !s.cfg.DisableNetworking {
+		s.log.Debug("periodicSync: Requesting outgoing connections and performing initial sync")
 		// The following request might be redundant, but it ensures we wait long enough for the DNS records to be loaded,
 		// which are required for the sync operation.
 		s.net.RequestConnectOutgoing(false, s.ctx.Done())
 		s.sync()
+		s.log.Debug("periodicSync: Initial sync completed")
+	} else {
+		s.log.Debugf("periodicSync: Skipping initial sync - parallelBlocks=%d, DisableNetworking=%t",
+			s.parallelBlocks, s.cfg.DisableNetworking)
 	}
+
 	stuckInARow := 0
 	sleepDuration := s.roundTimeEstimate
+	loopIteration := 0
+
+	s.log.Debugf("periodicSync: Entering main loop with initial sleepDuration=%v", sleepDuration)
+
 	for {
+		loopIteration++
 		currBlock := s.ledger.LastRound()
+		s.log.Debugf("periodicSync: Loop iteration %d - currBlock=%d, stuckInARow=%d, sleepDuration=%v, suspendForLedgerOps=%t",
+			loopIteration, currBlock, stuckInARow, sleepDuration, s.suspendForLedgerOps)
+
+		selectStart := time.Now()
 		select {
 		case <-s.ctx.Done():
+			s.log.Debug("periodicSync: Context cancelled, exiting")
 			return
 		case <-s.ledger.WaitMem(currBlock + 1):
+			selectDuration := time.Since(selectStart)
+			s.log.Debugf("periodicSync: Ledger moved forward from round %d to %d (wait time: %v). Likely by agreement service.",
+				currBlock, s.ledger.LastRound(), selectDuration)
 			// Ledger moved forward; likely to be by the agreement service.
 			stuckInARow = 0
 			// go to sleep for a short while, for a random duration.
 			// we want to sleep for a random duration since it would "de-syncronize" us from the ledger advance sync
+			prevSleepDuration := sleepDuration
 			sleepDuration = time.Duration(crypto.RandUint63()) % s.roundTimeEstimate
+			s.log.Debugf("periodicSync: Resetting stuckInARow, adjusting sleepDuration from %v to %v (random)",
+				prevSleepDuration, sleepDuration)
 			continue
 		case <-s.syncNow:
-			if s.parallelBlocks == 0 || s.ledger.IsWritingCatchpointDataFile() || s.ledger.IsBehindCommittingDeltas() {
+			selectDuration := time.Since(selectStart)
+			s.log.Debugf("periodicSync: Immediate sync requested (wait time: %v)", selectDuration)
+			if s.parallelBlocks == 0 {
+				s.log.Debug("periodicSync: Skipping immediate sync - parallelBlocks is 0")
+				continue
+			}
+			if s.ledger.IsWritingCatchpointDataFile() {
+				s.log.Debug("periodicSync: Skipping immediate sync - ledger is writing catchpoint file")
+				continue
+			}
+			if s.ledger.IsBehindCommittingDeltas() {
+				s.log.Debug("periodicSync: Skipping immediate sync - ledger is behind committing deltas")
 				continue
 			}
 			s.suspendForLedgerOps = false
-			s.log.Info("Immediate resync triggered; resyncing")
+			s.log.Info("periodicSync: Immediate resync triggered; resyncing")
+			syncStart := time.Now()
 			s.sync()
+			syncDuration := time.Since(syncStart)
+			s.log.Debugf("periodicSync: Immediate sync completed in %v", syncDuration)
 		case <-time.After(sleepDuration):
-			if sleepDuration < s.roundTimeEstimate || s.cfg.DisableNetworking {
+			selectDuration := time.Since(selectStart)
+			s.log.Debugf("periodicSync: Sleep timer expired after %v (expected %v)", selectDuration, sleepDuration)
+
+			if sleepDuration < s.roundTimeEstimate {
+				s.log.Debugf("periodicSync: Sleep duration %v < roundTimeEstimate %v, resetting to roundTimeEstimate and continuing",
+					sleepDuration, s.roundTimeEstimate)
 				sleepDuration = s.roundTimeEstimate
 				continue
 			}
-			// if the catchup is disabled in the config file, just skip it.
-			if s.parallelBlocks == 0 {
+			if s.cfg.DisableNetworking {
+				s.log.Debug("periodicSync: Networking disabled, resetting sleepDuration and continuing")
+				sleepDuration = s.roundTimeEstimate
 				continue
 			}
+
+			// if the catchup is disabled in the config file, just skip it.
+			if s.parallelBlocks == 0 {
+				s.log.Debug("periodicSync: parallelBlocks is 0, skipping sync")
+				continue
+			}
+
 			// check to see if we're currently writing a catchpoint file. If so, wait longer before attempting again.
 			if s.ledger.IsWritingCatchpointDataFile() {
+				s.log.Debugf("periodicSync: Ledger is writing catchpoint file, keeping sleepDuration=%v and continuing", sleepDuration)
 				// keep the existing sleep duration and try again later.
 				continue
 			}
+
 			// if the ledger has too many non-flushed account changes, skip
 			if s.ledger.IsBehindCommittingDeltas() {
+				s.log.Debug("periodicSync: Ledger is behind committing deltas, skipping sync")
 				continue
 			}
 
 			s.suspendForLedgerOps = false
-			s.log.Info("It's been too long since our ledger advanced; resyncing")
+			s.log.Infof("periodicSync: It's been too long (%v) since our ledger advanced; resyncing", sleepDuration)
+			syncStart := time.Now()
 			s.sync()
+			syncDuration := time.Since(syncStart)
+			s.log.Debugf("periodicSync: Timeout-triggered sync completed in %v", syncDuration)
 		case cert := <-s.unmatchedPendingCertificates:
+			selectDuration := time.Since(selectStart)
+			s.log.Debugf("periodicSync: Received unmatched certificate for round %d (wait time: %v)", cert.Cert.Round, selectDuration)
 			// the agreement service has a valid certificate for a block, but not the block itself.
 			if s.cfg.DisableNetworking {
-				s.log.Warnf("the local node is missing block %d, however, the catchup would not be able to provide it when the network is disabled.", cert.Cert.Round)
+				s.log.Warnf("periodicSync: the local node is missing block %d, however, the catchup would not be able to provide it when the network is disabled.", cert.Cert.Round)
 				continue
 			}
+			certSyncStart := time.Now()
 			s.syncCert(&cert)
+			certSyncDuration := time.Since(certSyncStart)
+			s.log.Debugf("periodicSync: Certificate sync for round %d completed in %v", cert.Cert.Round, certSyncDuration)
 		}
 
-		if currBlock == s.ledger.LastRound() {
+		newBlock := s.ledger.LastRound()
+		if currBlock == newBlock {
 			stuckInARow++
+			s.log.Debugf("periodicSync: Ledger still at round %d, stuckInARow now %d", currBlock, stuckInARow)
 		} else {
+			if stuckInARow > 0 {
+				s.log.Debugf("periodicSync: Ledger advanced from %d to %d, resetting stuckInARow from %d to 0",
+					currBlock, newBlock, stuckInARow)
+			}
 			stuckInARow = 0
 		}
+
 		if stuckInARow == s.cfg.CatchupFailurePeerRefreshRate {
+			s.log.Debugf("periodicSync: stuckInARow reached CatchupFailurePeerRefreshRate (%d), requesting new outgoing connections",
+				s.cfg.CatchupFailurePeerRefreshRate)
 			stuckInARow = 0
 			// TODO: RequestConnectOutgoing in terms of Context
+			connStart := time.Now()
 			s.net.RequestConnectOutgoing(true, s.ctx.Done())
+			connDuration := time.Since(connStart)
+			s.log.Debugf("periodicSync: RequestConnectOutgoing completed in %v", connDuration)
 		}
 	}
 }

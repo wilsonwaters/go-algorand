@@ -1402,15 +1402,19 @@ func (v2 *Handlers) TealDryrun(ctx echo.Context) error {
 // UnsetSyncRound removes the sync round restriction from the ledger.
 // (DELETE /v2/ledger/sync)
 func (v2 *Handlers) UnsetSyncRound(ctx echo.Context) error {
+	v2.Log.Infof("[handlers.go] UnsetSyncRound called")
 	v2.Node.UnsetSyncRound()
+	v2.Log.Infof("[handlers.go] UnsetSyncRound succeeded")
 	return ctx.NoContent(http.StatusOK)
 }
 
 // SetSyncRound sets the sync round on the ledger.
 // (POST /v2/ledger/sync/{round})
 func (v2 *Handlers) SetSyncRound(ctx echo.Context, round basics.Round) error {
+	v2.Log.Infof("[handlers.go] SetSyncRound called with round: %d", round)
 	err := v2.Node.SetSyncRound(round)
 	if err != nil {
+		v2.Log.Warnf("[handlers.go] SetSyncRound failed for round %d: %v", round, err)
 		switch err {
 		case catchup.ErrSyncRoundInvalid:
 			return badRequest(ctx, err, errFailedSettingSyncRound, v2.Log)
@@ -1418,16 +1422,20 @@ func (v2 *Handlers) SetSyncRound(ctx echo.Context, round basics.Round) error {
 			return internalError(ctx, err, errFailedSettingSyncRound, v2.Log)
 		}
 	}
+	v2.Log.Infof("[handlers.go] SetSyncRound succeeded for round: %d", round)
 	return ctx.NoContent(http.StatusOK)
 }
 
 // GetSyncRound gets the sync round from the ledger.
 // (GET /v2/ledger/sync)
 func (v2 *Handlers) GetSyncRound(ctx echo.Context) error {
+	v2.Log.Infof("[handlers.go] GetSyncRound called")
 	rnd := v2.Node.GetSyncRound()
 	if rnd == 0 {
+		v2.Log.Infof("[handlers.go] GetSyncRound: sync round is not set")
 		return notFound(ctx, fmt.Errorf("sync round is not set"), errFailedRetrievingSyncRound, v2.Log)
 	}
+	v2.Log.Infof("[handlers.go] GetSyncRound succeeded, sync round: %d", rnd)
 	return ctx.JSON(http.StatusOK, model.GetSyncRoundResponse{Round: rnd})
 }
 
