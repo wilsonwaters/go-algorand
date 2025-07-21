@@ -143,11 +143,7 @@ func MakeService(log logging.Logger, config config.Local, net network.GossipNode
 	s.unmatchedPendingCertificates = unmatchedPendingCertificates
 	s.log = log.With("Context", "sync")
 	s.parallelBlocks = config.CatchupParallelBlocks
-	if s.cfg.EnableFollowMode {
-		s.roundTimeEstimate = 100
-	} else {
-		s.roundTimeEstimate = agreement.DefaultDeadlineTimeout()
-	}
+	s.roundTimeEstimate = agreement.DefaultDeadlineTimeout()
 	s.blockValidationPool = blockValidationPool
 	s.syncNow = make(chan struct{}, 1)
 
