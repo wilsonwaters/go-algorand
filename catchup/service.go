@@ -186,28 +186,45 @@ func (s *Service) IsSynchronizing() (synchronizing bool, initialSync bool) {
 
 // triggerSync attempts to wake up the sync loop.
 func (s *Service) triggerSync() {
+	s.log.Debug("triggerSync: Attempting to send sync trigger")
+	start := time.Now()
+
 	// Prevents deadlock if periodic sync isn't running
 	// when catchup is setting the sync round.
 	select {
 	case s.syncNow <- struct{}{}:
+		duration := time.Since(start)
+		s.log.Debugf("triggerSync: Successfully sent sync trigger (duration: %v)", duration)
 	default:
+		duration := time.Since(start)
+		s.log.Debugf("triggerSync: Channel was full, used default path (duration: %v)", duration)
 	}
 }
 
 // SetDisableSyncRound attempts to set the first round we _do_not_ want to fetch from the network
 // Blocks from disableSyncRound or any round after disableSyncRound will not be fetched while this is set
 func (s *Service) SetDisableSyncRound(rnd basics.Round) error {
-	if rnd < s.ledger.LastRound() {
+	currentLedgerRound := s.ledger.LastRound()
+	s.log.Debugf("SetDisableSyncRound: Attempting to set disable sync round to %d (current ledger round: %d)", rnd, currentLedgerRound)
+
+	if rnd < currentLedgerRound {
+		s.log.Debugf("SetDisableSyncRound: Failed - requested round %d < current ledger round %d", rnd, currentLedgerRound)
 		return ErrSyncRoundInvalid
 	}
+
+	previousValue := s.disableSyncRound.Load()
 	s.disableSyncRound.Store(uint64(rnd))
+	s.log.Debugf("SetDisableSyncRound: Successfully set disable sync round from %d to %d, triggering sync", previousValue, rnd)
 	s.triggerSync()
 	return nil
 }
 
 // UnsetDisableSyncRound removes any previously set disabled sync round
 func (s *Service) UnsetDisableSyncRound() {
+	previousValue := s.disableSyncRound.Load()
+	s.log.Debugf("UnsetDisableSyncRound: Unsetting disable sync round (previous value: %d)", previousValue)
 	s.disableSyncRound.Store(0)
+	s.log.Debug("UnsetDisableSyncRound: Successfully unset disable sync round to 0, triggering sync")
 	s.triggerSync()
 }
 
