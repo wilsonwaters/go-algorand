@@ -145,7 +145,7 @@ func MakeService(log logging.Logger, config config.Local, net network.GossipNode
 	s.parallelBlocks = config.CatchupParallelBlocks
 	s.roundTimeEstimate = agreement.DefaultDeadlineTimeout()
 	s.blockValidationPool = blockValidationPool
-	s.syncNow = make(chan struct{}, 1)
+	s.syncNow = make(chan struct{}, 10)
 
 	return s
 }
