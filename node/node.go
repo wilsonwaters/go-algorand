@@ -1496,7 +1496,8 @@ func (node *AlgorandFullNode) GetSyncRound() basics.Round {
 }
 
 // UnsetSyncRound no-ops
-func (node *AlgorandFullNode) UnsetSyncRound() {
+func (node *AlgorandFullNode) UnsetSyncRound() error {
+	return nil
 }
 
 // SetBlockTimeStampOffset sets a timestamp offset in the block header.

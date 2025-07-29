@@ -101,7 +101,7 @@ func TestSyncRound(t *testing.T) {
 	// Ensure it is persisted
 	require.Equal(t, dbRound+11, node.GetSyncRound())
 	// Unset the sync round and make sure get returns 0
-	node.UnsetSyncRound()
+	require.NoError(t, node.UnsetSyncRound())
 	require.Zero(t, node.GetSyncRound())
 }
 
