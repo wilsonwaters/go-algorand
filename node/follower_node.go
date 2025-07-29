@@ -463,8 +463,8 @@ func (node *AlgorandFollowerNode) GetSyncRound() basics.Round {
 }
 
 // UnsetSyncRound removes the sync round constraint on the catchup service
-func (node *AlgorandFollowerNode) UnsetSyncRound() {
-	node.catchupService.UnsetDisableSyncRound()
+func (node *AlgorandFollowerNode) UnsetSyncRound() error {
+	return node.catchupService.UnsetDisableSyncRound()
 }
 
 // SetBlockTimeStampOffset sets a timestamp offset in the block header.

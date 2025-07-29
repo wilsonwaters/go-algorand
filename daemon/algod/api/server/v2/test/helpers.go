@@ -121,7 +121,9 @@ func (m *mockNode) SetSyncRound(rnd basics.Round) error {
 	return args.Error(0)
 }
 
-func (m *mockNode) UnsetSyncRound() {
+func (m *mockNode) UnsetSyncRound() error {
+	args := m.Called()
+	return args.Error(0)
 }
 
 func (m *mockNode) GetSyncRound() basics.Round {

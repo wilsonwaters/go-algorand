@@ -181,12 +181,14 @@ func (s *Service) IsSynchronizing() (synchronizing bool, initialSync bool) {
 }
 
 // triggerSync attempts to wake up the sync loop.
-func (s *Service) triggerSync() {
-	// Prevents deadlock if periodic sync isn't running
-	// when catchup is setting the sync round.
+// Blocks until the periodic sync is triggered or times out after 120 seconds.
+// Returns an error if the timeout is exceeded.
+func (s *Service) triggerSync() error {
 	select {
 	case s.syncNow <- struct{}{}:
-	default:
+		return nil
+	case <-time.After(120 * time.Second):
+		return fmt.Errorf("triggerSync timed out after 120 seconds - sync channel is full")
 	}
 }
 
@@ -197,14 +199,21 @@ func (s *Service) SetDisableSyncRound(rnd basics.Round) error {
 		return ErrSyncRoundInvalid
 	}
 	s.disableSyncRound.Store(uint64(rnd))
-	s.triggerSync()
+	err := s.triggerSync()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
 // UnsetDisableSyncRound removes any previously set disabled sync round
-func (s *Service) UnsetDisableSyncRound() {
+func (s *Service) UnsetDisableSyncRound() error {
 	s.disableSyncRound.Store(0)
-	s.triggerSync()
+	err := s.triggerSync()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // GetDisableSyncRound returns the disabled sync round
