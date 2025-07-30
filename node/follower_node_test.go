@@ -18,8 +18,10 @@ package node
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/sirupsen/logrus/hooks/test"
@@ -103,6 +105,184 @@ func TestSyncRound(t *testing.T) {
 	// Unset the sync round and make sure get returns 0
 	node.UnsetSyncRound()
 	require.Zero(t, node.GetSyncRound())
+}
+
+func TestSyncRoundPerformance(t *testing.T) {
+	partitiontest.PartitionTest(t)
+	t.Parallel()
+
+	// set up the main node using the node_test code
+	// const numAccounts = 1
+	// acctStake := make([]basics.MicroAlgos, numAccounts)
+	// acctStake[0] = basics.MicroAlgos{Raw: uint64(100000000)}
+
+	// configHook := func(ni nodeInfo, cfg config.Local) (nodeInfo, config.Local) {
+	// 	cfg = config.GetDefaultLocal()
+	// 	cfg.BaseLoggerDebugLevel = uint32(logging.Debug)
+	// 	if ni.idx == 0 {
+	// 		// node 0 is main node
+	// 		cfg.GossipFanout = 1
+	// 		cfg.DNSBootstrapID = ""
+	// 		cfg.IncomingConnectionsLimit = 0
+	// 		cfg.Archival = true
+	// 		//cfg.isIndexerActive = false
+	// 		cfg.EnableDeveloperAPI = true
+	// 	}
+
+	// 	if ni.idx == 1 {
+	// 		// node 1 is follower node
+	// 		cfg.EnableFollowMode = true
+	// 		cfg.MaxAcctLookback = 64
+	// 		cfg.CatchupParallelBlocks = 64
+	// 		cfg.CatchupBlockValidateMode = 3
+	// 	}
+
+	// 	return ni, cfg
+	// }
+
+	// phonebookHook := func(nodes []nodeInfo, nodeIdx int) []string {
+	// 	phonebook := make([]string, 0, len(nodes)-1)
+	// 	for i := range nodes {
+	// 		if i != nodeIdx {
+	// 			phonebook = append(phonebook, nodes[i].wsNetAddr())
+	// 		}
+	// 	}
+	// 	return phonebook
+	// }
+	// nodes, wallets := setupFullNodesEx(t, protocol.ConsensusCurrentVersion, nil, acctStake, configHook, phonebookHook)
+	// require.Len(t, nodes, numAccounts)
+	// require.Len(t, wallets, numAccounts)
+
+	// for i := 0; i < len(nodes); i++ {
+	// 	defer os.Remove(wallets[i])
+	// 	defer nodes[i].Stop()
+	// }
+
+	// startAndConnectNodes(nodes, nodelayFirstNodeStartDelay)
+
+	// setup the main node directly
+	f, _ := os.Create(t.Name() + "-main.log")
+	log1 := logging.NewLogger()
+	log1.SetOutput(f)
+	log1.SetLevel(logging.Debug)
+	log1.SetJSONFormatter()
+	cfg := config.GetDefaultLocal()
+	cfg.GossipFanout = 1
+	cfg.DNSBootstrapID = ""
+	cfg.IncomingConnectionsLimit = 0
+	cfg.Archival = true
+	//cfg.isIndexerActive = false
+	cfg.EnableDeveloperAPI = true
+	cfg.BaseLoggerDebugLevel = 5
+	genesis := bookkeeping.Genesis{
+		SchemaID:    "go-test-node-genesis",
+		Proto:       protocol.ConsensusCurrentVersion,
+		Network:     config.Devtestnet,
+		FeeSink:     sinkAddr.String(),
+		RewardsPool: poolAddr.String(),
+		DevMode:     true,
+	}
+	tempDir := t.TempDir()
+	mainNode, err := MakeFull(log1, tempDir, cfg, []string{}, genesis)
+	require.NoError(t, err)
+	err = mainNode.Start()
+	require.NoError(t, err)
+
+	// setupFollowNode
+	f2, _ := os.Create(t.Name() + "-follower.log")
+	log2 := logging.NewLogger()
+	log2.SetOutput(f2)
+	log2.SetLevel(logging.Debug)
+	log2.SetJSONFormatter()
+	cfg2 := config.GetDefaultLocal()
+	cfg2.EnableFollowMode = true
+	cfg2.MaxAcctLookback = 64
+	cfg2.CatchupParallelBlocks = 64
+	cfg2.CatchupBlockValidateMode = 3
+	cfg2.BaseLoggerDebugLevel = 5
+	genesis2 := followNodeDefaultGenesis()
+	tempDir2 := t.TempDir()
+	followerNode, err := MakeFollower(log2, tempDir2, cfg2, []string{}, genesis2)
+	require.NoError(t, err)
+	err = followerNode.Start()
+	require.NoError(t, err)
+
+	// test
+
+	// // send a whole pile of transactions to the main node
+	// // This only works if created the main node using the node_test code
+	// filename := filepath.Join(nodes[0].genesisDirs.RootGenesisDir, wallets[0])
+	// access, err := db.MakeAccessor(filename, false, false)
+	// require.NoError(t, err)
+	// root, err := account.RestoreRoot(access)
+	// access.Close()
+	// require.NoError(t, err)
+
+	// addr2 := root.Address()
+	// secrets2 := root.Secrets()
+	// txn := transactions.Transaction{
+	// 	Type: protocol.PaymentTx,
+	// 	Header: transactions.Header{
+	// 		Sender:      addr2,
+	// 		FirstValid:  1,
+	// 		LastValid:   100,
+	// 		Fee:         basics.MicroAlgos{Raw: 1000},
+	// 		GenesisID:   nodes[0].genesisID,
+	// 		GenesisHash: nodes[0].genesisHash,
+	// 	},
+	// 	PaymentTxnFields: transactions.PaymentTxnFields{
+	// 		Receiver: addr2,
+	// 		Amount:   basics.MicroAlgos{Raw: 0},
+	// 	},
+	// }
+	// signature := secrets2.Sign(txn)
+	// stxn := transactions.SignedTxn{
+	// 	Sig: signature,
+	// 	Txn: txn,
+	// }
+
+	// err = nodes[0].BroadcastSignedTxGroup([]transactions.SignedTxn{stxn})
+	// require.NoError(t, err)
+
+	// // add a block to the main node
+	// b := bookkeeping.Block{
+	// 	BlockHeader: bookkeeping.BlockHeader{
+	// 		Round: 1,
+	// 	},
+	// }
+	// b.CurrentProtocol = protocol.ConsensusCurrentVersion
+	// err = mainNode.Ledger().AddBlock(b, agreement.Certificate{})
+	// require.NoError(t, err)
+
+	// wait for the initial transactions to completed
+	initialRound := mainNode.ledger.NextRound()
+	targetRound := initialRound + 1
+	t.Logf("Waiting for round %d (initial %d)", targetRound, initialRound)
+
+	// ensure tx properly propagated to main node
+	select {
+	case <-mainNode.ledger.Wait(targetRound):
+		b, err := mainNode.ledger.Block(targetRound)
+		require.NoError(t, err)
+		require.Greater(t, b.TxnCounter, uint64(1000)) // new initial value after AppForbidLowResources
+	case <-time.After(1 * time.Minute):
+		require.Fail(t, "no block notification")
+	}
+
+	dbRound := followerNode.Ledger().LatestTrackerCommitted()
+	// Sync Round should be initialized to the ledger's dbRound + 1
+	//require.Equal(t, dbRound+1, nodes[1].GetSyncRound())
+	// Set a new sync round
+	require.NoError(t, followerNode.SetSyncRound(dbRound+11))
+	require.NoError(t, followerNode.SetSyncRound(dbRound+12))
+	require.NoError(t, followerNode.SetSyncRound(dbRound+13))
+	require.NoError(t, followerNode.SetSyncRound(dbRound+14))
+	// Ensure it is persisted
+	require.Equal(t, dbRound+14, followerNode.GetSyncRound())
+	// Unset the sync round and make sure get returns 0
+	followerNode.UnsetSyncRound()
+	require.Zero(t, followerNode.GetSyncRound())
+
 }
 
 func TestErrors(t *testing.T) {
