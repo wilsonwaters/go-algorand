@@ -182,7 +182,7 @@ func (s *Service) IsSynchronizing() (synchronizing bool, initialSync bool) {
 
 // triggerSync attempts to wake up the sync loop.
 func (s *Service) triggerSync() {
-	s.log.Debug("triggerSync: Attempting to send sync trigger")
+	s.log.Debugf("triggerSync: Attempting to send sync trigger (channel has %d messages)", len(s.syncNow))
 	start := time.Now()
 
 	// Prevents deadlock if periodic sync isn't running
@@ -681,7 +681,7 @@ func (s *Service) periodicSync() {
 			continue
 		case <-s.syncNow:
 			selectDuration := time.Since(selectStart)
-			s.log.Debugf("periodicSync: Immediate sync requested (wait time: %v)", selectDuration)
+			s.log.Debugf("periodicSync: Immediate sync requested (wait time: %v, %d messages remaining in channel)", selectDuration, len(s.syncNow))
 			if s.parallelBlocks == 0 {
 				s.log.Debug("periodicSync: Skipping immediate sync - parallelBlocks is 0")
 				continue
