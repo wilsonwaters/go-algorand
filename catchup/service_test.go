@@ -273,8 +273,7 @@ func TestSyncRound(t *testing.T) {
 	}
 
 	// unset syncRound and make sure we finish catching up
-	err = s.UnsetDisableSyncRound()
-	require.NoError(t, err)
+	s.UnsetDisableSyncRound()
 	// wait until the catchup is done
 	waitStart = time.Now()
 	for time.Since(waitStart) < 8*s.roundTimeEstimate {

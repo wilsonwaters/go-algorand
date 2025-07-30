@@ -181,14 +181,19 @@ func (s *Service) IsSynchronizing() (synchronizing bool, initialSync bool) {
 }
 
 // triggerSync attempts to wake up the sync loop.
-// It blocks until the sync signal is sent or times out after 120 seconds.
-// Returns an error if the timeout is exceeded.
-func (s *Service) triggerSync() error {
+func (s *Service) triggerSync() {
+	s.log.Debug("triggerSync: Attempting to send sync trigger")
+	start := time.Now()
+
+	// Prevents deadlock if periodic sync isn't running
+	// when catchup is setting the sync round.
 	select {
 	case s.syncNow <- struct{}{}:
-		return nil
-	case <-time.After(120 * time.Second):
-		return fmt.Errorf("triggerSync timed out after 120 seconds - sync channel is full")
+		duration := time.Since(start)
+		s.log.Debugf("triggerSync: Successfully sent sync trigger (duration: %v)", duration)
+	default:
+		duration := time.Since(start)
+		s.log.Debugf("triggerSync: Channel was full, used default path (duration: %v)", duration)
 	}
 }
 
@@ -206,24 +211,17 @@ func (s *Service) SetDisableSyncRound(rnd basics.Round) error {
 	previousValue := s.disableSyncRound.Load()
 	s.disableSyncRound.Store(uint64(rnd))
 	s.log.Debugf("SetDisableSyncRound: Successfully set disable sync round from %d to %d, triggering sync", previousValue, rnd)
-	err := s.triggerSync()
-	if err != nil {
-		return err
-	}
+	s.triggerSync()
 	return nil
 }
 
 // UnsetDisableSyncRound removes any previously set disabled sync round
-func (s *Service) UnsetDisableSyncRound() error {
+func (s *Service) UnsetDisableSyncRound() {
 	previousValue := s.disableSyncRound.Load()
 	s.log.Debugf("UnsetDisableSyncRound: Unsetting disable sync round (previous value: %d)", previousValue)
 	s.disableSyncRound.Store(0)
 	s.log.Debug("UnsetDisableSyncRound: Successfully unset disable sync round to 0, triggering sync")
-	err := s.triggerSync()
-	if err != nil {
-		return err
-	}
-	return nil
+	s.triggerSync()
 }
 
 // GetDisableSyncRound returns the disabled sync round

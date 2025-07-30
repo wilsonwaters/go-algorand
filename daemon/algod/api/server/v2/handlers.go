@@ -145,7 +145,7 @@ type NodeInterface interface {
 	AppendParticipationKeys(id account.ParticipationID, keys account.StateProofKeys) error
 	SetSyncRound(rnd basics.Round) error
 	GetSyncRound() basics.Round
-	UnsetSyncRound() error
+	UnsetSyncRound()
 	GetBlockTimeStampOffset() (*int64, error)
 	SetBlockTimeStampOffset(int64) error
 }
@@ -1403,11 +1403,7 @@ func (v2 *Handlers) TealDryrun(ctx echo.Context) error {
 // (DELETE /v2/ledger/sync)
 func (v2 *Handlers) UnsetSyncRound(ctx echo.Context) error {
 	v2.Log.Infof("[handlers.go] UnsetSyncRound called")
-	err := v2.Node.UnsetSyncRound()
-	if err != nil {
-		v2.Log.Errorf("[handlers.go] UnsetSyncRound failed: %v", err)
-		return internalError(ctx, err, errFailedUnsettingSyncRound, v2.Log)
-	}
+	v2.Node.UnsetSyncRound()
 	v2.Log.Infof("[handlers.go] UnsetSyncRound succeeded")
 	return ctx.NoContent(http.StatusOK)
 }

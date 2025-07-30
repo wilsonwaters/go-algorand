@@ -330,7 +330,7 @@ func TestSyncRound(t *testing.T) {
 	c, rec = newReq(t)
 
 	// TestUnsetSyncRound 200
-	mockCall = mockNode.On("UnsetSyncRound").Return(nil)
+	mockCall = mockNode.On("UnsetSyncRound").Return()
 	err = handler.UnsetSyncRound(c)
 	require.NoError(t, err)
 	require.Equal(t, 200, rec.Code)

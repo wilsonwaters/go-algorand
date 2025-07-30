@@ -31,7 +31,6 @@ var (
 	errFailedSettingTimeStampOffset            = "failed to set timestamp offset on the node: %v"
 	errFailedRetrievingSyncRound               = "failed retrieving sync round from ledger"
 	errFailedSettingSyncRound                  = "failed to set sync round on the ledger"
-	errFailedUnsettingSyncRound                = "failed to unset sync round on the ledger"
 	errFailedParsingFormatOption               = "failed to parse the format option"
 	errFailedToParseAddress                    = "failed to parse the address"
 	errFailedToParseExclude                    = "failed to parse exclude"
