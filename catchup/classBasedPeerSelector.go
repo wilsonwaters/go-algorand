@@ -20,6 +20,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/algorand/go-algorand/logging"
 	"github.com/algorand/go-algorand/network"
 	"github.com/algorand/go-deadlock"
 )
@@ -31,11 +32,13 @@ import (
 type classBasedPeerSelector struct {
 	mu            deadlock.Mutex
 	peerSelectors []*wrappedPeerSelector
+	log           logging.Logger
 }
 
-func makeClassBasedPeerSelector(peerSelectors []*wrappedPeerSelector) *classBasedPeerSelector {
+func makeClassBasedPeerSelector(peerSelectors []*wrappedPeerSelector, log logging.Logger) *classBasedPeerSelector {
 	return &classBasedPeerSelector{
 		peerSelectors: peerSelectors,
+		log:           log.With("Context", "classBasedPeerSelector"),
 	}
 }
 
@@ -92,44 +95,76 @@ func (c *classBasedPeerSelector) peerDownloadDurationToRank(psp *peerSelectorPee
 func (c *classBasedPeerSelector) getNextPeer() (psp *peerSelectorPeer, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.internalGetNextPeer(0)
+	c.log.Debugf("getNextPeer: entering")
+	psp, err = c.internalGetNextPeer(0)
+	if err != nil {
+		c.log.Debugf("getNextPeer: returning error: %v", err)
+	} else {
+		c.log.Debugf("getNextPeer: returning peer from class %s", psp.peerClass)
+	}
+	return psp, err
 }
 
 // internalGetNextPeer is a helper function that should be called with the lock held
 func (c *classBasedPeerSelector) internalGetNextPeer(recurseCount int8) (psp *peerSelectorPeer, err error) {
+	c.log.Debugf("internalGetNextPeer: entering with recurseCount=%d", recurseCount)
+
 	// Safety check to prevent infinite recursion
 	if recurseCount > 1 {
+		c.log.Debugf("internalGetNextPeer: recursion limit exceeded, returning errPeerSelectorNoPeerPoolsAvailable")
 		return nil, errPeerSelectorNoPeerPoolsAvailable
 	}
 	selectorDisabledCount := 0
-	for _, wp := range c.peerSelectors {
+	c.log.Debugf("internalGetNextPeer: checking %d peer selectors", len(c.peerSelectors))
+
+	for i, wp := range c.peerSelectors {
+		c.log.Debugf("internalGetNextPeer: checking selector %d (class=%s, downloadFailures=%d, toleranceFactor=%d)",
+			i, wp.peerClass, wp.downloadFailures, wp.toleranceFactor)
+
 		if wp.downloadFailures > wp.toleranceFactor {
 			// peerSelector is disabled for now, we move to the next one
+			c.log.Debugf("internalGetNextPeer: selector %d disabled due to failures (%d > %d)",
+				i, wp.downloadFailures, wp.toleranceFactor)
 			selectorDisabledCount++
 			continue
 		}
+
+		c.log.Debugf("internalGetNextPeer: attempting to get peer from selector %d", i)
 		psp, err = wp.peerSelector.getNextPeer()
 
 		if err != nil {
+			c.log.Debugf("internalGetNextPeer: selector %d returned error: %v", i, err)
 			// This is mostly just future-proofing, as we don't expect any other errors from getNextPeer
 			if errors.Is(err, errPeerSelectorNoPeerPoolsAvailable) {
 				// We penalize this class the equivalent of one download failure (in case this is transient)
 				wp.downloadFailures++
+				c.log.Debugf("internalGetNextPeer: increased failure count for selector %d to %d", i, wp.downloadFailures)
 			}
 			continue
 		}
+
+		c.log.Debugf("internalGetNextPeer: successfully got peer from selector %d (class=%s)", i, wp.peerClass)
 		return psp, nil
 	}
+
 	// If we reached here, we have exhausted all classes and still have no peers
+	c.log.Debugf("internalGetNextPeer: exhausted all selectors, selectorDisabledCount=%d, total=%d",
+		selectorDisabledCount, len(c.peerSelectors))
+
 	// IFF all classes are disabled, we reset the downloadFailures for all classes and start over
 	if len(c.peerSelectors) != 0 && selectorDisabledCount == len(c.peerSelectors) {
-		for _, wp := range c.peerSelectors {
+		c.log.Debugf("internalGetNextPeer: all selectors disabled, resetting failure counts and recursing")
+		for i, wp := range c.peerSelectors {
+			oldFailures := wp.downloadFailures
 			wp.downloadFailures = 0
+			c.log.Debugf("internalGetNextPeer: reset selector %d failure count from %d to 0", i, oldFailures)
 		}
 		// Recurse to try again, we should have at least one class enabled now
 		return c.internalGetNextPeer(recurseCount + 1)
 	}
+
 	// If we reached here, we have exhausted all classes without finding a peer, not due to all classes being disabled
+	c.log.Debugf("internalGetNextPeer: no peers available from any selector")
 	return nil, errPeerSelectorNoPeerPoolsAvailable
 }
 
@@ -142,7 +177,7 @@ type wrappedPeerSelector struct {
 
 // makeCatchpointPeerSelector returns a classBasedPeerSelector that selects peers based on their class and response behavior.
 // These are the preferred configurations for the catchpoint service.
-func makeCatchpointPeerSelector(net peersRetriever) peerSelector {
+func makeCatchpointPeerSelector(net peersRetriever, log logging.Logger) peerSelector {
 	wrappedPeerSelectors := []*wrappedPeerSelector{
 		{
 			peerClass: network.PeersPhonebookRelays,
@@ -158,5 +193,5 @@ func makeCatchpointPeerSelector(net peersRetriever) peerSelector {
 		},
 	}
 
-	return makeClassBasedPeerSelector(wrappedPeerSelectors)
+	return makeClassBasedPeerSelector(wrappedPeerSelectors, log)
 }

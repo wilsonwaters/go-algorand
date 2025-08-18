@@ -959,7 +959,7 @@ func TestCreatePeerSelector(t *testing.T) {
 	partitiontest.PartitionTest(t)
 
 	s := MakeService(logging.Base(), defaultConfig, &httpTestPeerSource{}, new(mockedLedger), &mockedAuthenticator{errorRound: int(0 + 1)}, nil, nil)
-	ps := createPeerSelector(s.net)
+	ps := createPeerSelector(s.net, s.log)
 
 	cps, ok := ps.(*classBasedPeerSelector)
 	require.True(t, ok)

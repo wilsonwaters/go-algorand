@@ -20,6 +20,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/algorand/go-algorand/logging"
 	"github.com/algorand/go-algorand/network"
 	"github.com/algorand/go-algorand/test/partitiontest"
 	"github.com/stretchr/testify/require"
@@ -66,7 +67,7 @@ func TestClassBasedPeerSelector_makeClassBasedPeerSelector(t *testing.T) {
 		},
 	}
 
-	cps := makeClassBasedPeerSelector(wrappedPeerSelectors)
+	cps := makeClassBasedPeerSelector(wrappedPeerSelectors, logging.TestingLog(t))
 
 	// The selectors should be sorted by priority
 	require.Equal(t, 3, len(cps.peerSelectors))
@@ -117,7 +118,7 @@ func TestClassBasedPeerSelector_rankPeer(t *testing.T) {
 			toleranceFactor: 3,
 		},
 	}
-	cps := makeClassBasedPeerSelector(wrappedPeerSelectors)
+	cps := makeClassBasedPeerSelector(wrappedPeerSelectors, logging.TestingLog(t))
 
 	// Peer is found in second selector, rank is within range for a block found
 	oldRank, newRank := cps.rankPeer(mockPeer, 50)
@@ -210,7 +211,7 @@ func TestClassBasedPeerSelector_peerDownloadDurationToRank(t *testing.T) {
 			toleranceFactor: 3,
 		},
 	}
-	cps := makeClassBasedPeerSelector(wrappedPeerSelectors)
+	cps := makeClassBasedPeerSelector(wrappedPeerSelectors, logging.TestingLog(t))
 
 	// The peer is found in the second selector, so the rank should be peerRank0HighBlockTime
 	rank := cps.peerDownloadDurationToRank(mockPeer, testDuration)
@@ -263,7 +264,7 @@ func TestClassBasedPeerSelector_getNextPeer(t *testing.T) {
 		},
 	}
 
-	cps := makeClassBasedPeerSelector(wrappedPeerSelectors)
+	cps := makeClassBasedPeerSelector(wrappedPeerSelectors, logging.TestingLog(t))
 
 	peerResult, err := cps.getNextPeer()
 	require.Nil(t, err)
@@ -340,7 +341,7 @@ func TestClassBasedPeerSelector_getNextPeer(t *testing.T) {
 		},
 	}
 
-	cps = makeClassBasedPeerSelector(wrappedPeerSelectors)
+	cps = makeClassBasedPeerSelector(wrappedPeerSelectors, logging.TestingLog(t))
 
 	// We should always get the peer from the top priority selector since rankings are not updated/list is not re-sorted.
 	for i := 0; i < 10; i++ {
@@ -434,7 +435,7 @@ func TestClassBasedPeerSelector_integration(t *testing.T) {
 		return nil
 	})
 	// Create a class based peer selector with a few wrapped peer selectors
-	cps := makeCatchpointPeerSelector(net).(*classBasedPeerSelector)
+	cps := makeCatchpointPeerSelector(net, logging.TestingLog(t)).(*classBasedPeerSelector)
 
 	// We should get the peer from the first priority selector, PeersPhonebookRelays
 	peerResult, err := cps.getNextPeer()

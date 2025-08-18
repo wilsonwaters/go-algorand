@@ -514,7 +514,7 @@ func (s *Service) pipelinedFetch(seedLookback uint64) {
 		}
 	}()
 
-	ps := createPeerSelector(s.net)
+	ps := createPeerSelector(s.net, s.log)
 	if _, err := ps.getNextPeer(); err != nil {
 		s.log.Debugf("pipelinedFetch: was unable to obtain a peer to retrieve the block from: %v", err)
 		return
@@ -851,7 +851,7 @@ func (s *Service) fetchRound(cert agreement.Certificate, verifier *agreement.Asy
 	peerErrors := map[network.Peer]int{}
 
 	blockHash := bookkeeping.BlockHash(cert.Proposal.BlockDigest) // semantic digest (i.e., hash of the block header), not byte-for-byte digest
-	ps := createPeerSelector(s.net)
+	ps := createPeerSelector(s.net, s.log)
 	for s.ledger.LastRound() < cert.Round {
 		psp, getPeerErr := ps.getNextPeer()
 		if getPeerErr != nil {
@@ -895,7 +895,7 @@ func (s *Service) fetchRound(cert agreement.Certificate, verifier *agreement.Asy
 						// - peer selector punishes one of the peers more than the other
 						// - the punished peer gets the block, and the less punished peer stuck.
 						// It this case reset the peer selector to let it re-learn priorities.
-						ps = createPeerSelector(s.net)
+						ps = createPeerSelector(s.net, s.log)
 					}
 				}
 				peerErrors[peer]++
@@ -973,33 +973,33 @@ func (s *Service) roundIsNotSupported(nextRound basics.Round) bool {
 	return true
 }
 
-func createPeerSelector(net peersRetriever) peerSelector {
+func createPeerSelector(net peersRetriever, log logging.Logger) peerSelector {
 	wrappedPeerSelectors := []*wrappedPeerSelector{
 		{
 			peerClass: network.PeersConnectedOut,
 			peerSelector: makeRankPooledPeerSelector(net,
 				[]peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersConnectedOut}}),
-			toleranceFactor: 3,
+			toleranceFactor: 30,
 		},
 		{
 			peerClass: network.PeersPhonebookRelays,
 			peerSelector: makeRankPooledPeerSelector(net,
 				[]peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookRelays}}),
-			toleranceFactor: 3,
+			toleranceFactor: 30,
 		},
 		{
 			peerClass: network.PeersPhonebookArchivalNodes,
 			peerSelector: makeRankPooledPeerSelector(net,
 				[]peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersPhonebookArchivalNodes}}),
-			toleranceFactor: 10,
+			toleranceFactor: 100,
 		},
 		{
 			peerClass: network.PeersConnectedIn,
 			peerSelector: makeRankPooledPeerSelector(net,
 				[]peerClass{{initialRank: peerRankInitialFirstPriority, peerClass: network.PeersConnectedIn}}),
-			toleranceFactor: 3,
+			toleranceFactor: 30,
 		},
 	}
 
-	return makeClassBasedPeerSelector(wrappedPeerSelectors)
+	return makeClassBasedPeerSelector(wrappedPeerSelectors, log)
 }

@@ -807,7 +807,7 @@ func (cs *CatchpointCatchupService) updateBlockRetrievalStatistics(acquiredBlock
 }
 
 func (cs *CatchpointCatchupService) initDownloadPeerSelector() {
-	cs.blocksDownloadPeerSelector = makeCatchpointPeerSelector(cs.net)
+	cs.blocksDownloadPeerSelector = makeCatchpointPeerSelector(cs.net, cs.log)
 }
 
 // checkLedgerDownload sends a HEAD request to the ledger endpoint of peers to validate the catchpoint's availability
